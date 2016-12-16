@@ -2,29 +2,155 @@
 title: "ZED"
 author: "Chowanski"
 date: "15 grudnia 2016"
-output: html_document
+output:
+  html_document:
+    depth: 3
+    highlight: tango
+    keep_md: yes
+    theme: united
+    toc: yes
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+devtools::install_github("dgrtwo/gganimate")
+list.of.packages <- c("ggplot2", "dplyr", "cowplot")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages, repos="http://cran.rstudio.com/")
+library(dplyr)
+library(ggplot2)
+library(gganimate)
+library(cowplot)
+lapply(list.of.packages, library, character.only = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
+theme_set(theme_bw())
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+## Wykorzystane biblioteki
+```{r usedLibs}
+knitr::kable(list.of.packages)
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+## Ładowanie danych
+Do wczytania danych z pliku `.csv`, użyto funkcji `read.table`. Ze względu na wystąpienie nagłówka, ustawiono parametr `header = TRUE`, znak separatora został ustawiony na przecinek (`sep=","`). Dodatkowo skorzystano z parametru `na.strings = "?"` w celu zamiany brakujących wartośći (oznaczonych w zbiorze danych znakiem `'?'`) na wartość `NA`.
+```{r loadData, echo=TRUE}
+data <- read.table('./sledzie.csv', header = TRUE, sep=",", na.strings = "?")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Przetwarzanie brakujących danych
+```{r missingValuesProcessing, echo=FALSE}
+clearData <- data %>% na.omit()
+```
+Zbiór danych składa się z `r nrow(data)` rekordów, gdzie `r nrow(data) - nrow(clearData)` z nich zawiera  wartości `NA`.
+Do usunięcia rekordów z brakującymi wartościami użyto funkcji `na.omit()`.
+```{r missingValuesProcessing2, echo=TRUE, eval=FALSE}
+clearData <- data %>% na.omit()
+```
+Oczyszczony zbiór zawiera `r nrow(clearData)` rekordów.
+
+## Rozmiar zbioru i statystki
+Zbiór danych po oczyszczeniu zawiera `r nrow(clearData)` wierszy oraz `r length(clearData) - 1` kolumn.
+
+####Opis kolumn:
+* <span style="color:red; font-weight:bold">length</span>: długość złowionego śledzia [cm];
+* cfin1: dostępność planktonu [zagęszczenie Calanus finmarchicus gat. 1];
+* cfin2: dostępność planktonu [zagęszczenie Calanus finmarchicus gat. 2];
+* chel1: dostępność planktonu [zagęszczenie Calanus helgolandicus gat. 1];
+* chel2: dostępność planktonu [zagęszczenie Calanus helgolandicus gat. 2];
+* lcop1: dostępność planktonu [zagęszczenie widłonogów gat. 1];
+* lcop2: dostępność planktonu [zagęszczenie widłonogów gat. 2];
+* fbar: natężenie połowów w regionie [ułamek pozostawionego narybku];
+* recr: roczny narybek [liczba śledzi];
+* cumf: łączne roczne natężenie połowów w regionie [ułamek pozostawionego narybku];
+* totaln: łączna liczba ryb złowionych w ramach połowu [liczba śledzi];
+* sst: temperatura przy powierzchni wody [°C];
+* sal: poziom zasolenia wody [Knudsen ppt];
+* xmonth: miesiąc połowu [numer miesiąca];
+* nao: oscylacja północnoatlantycka [mb].
+
+####Statystyki dla zbioru oczyszczonego
+```{r statsCleared}
+knitr::kable(summary(clearData %>% select(-c(X, xmonth))))
+```
+
+## Rozkład wartości
+Na podstawie histogramu wartości `length` można stwierdzić, że rozkład wartości tego atrybutu jest zbliżony do rozkładu normalnego.
+```{r valueDistribution}
+plotSimpleHistogram <- function(columnName) {
+  ggplot(clearData, aes_string(columnName)) +
+  geom_histogram(bins = 28, aes(fill = ..count..)) +
+  scale_fill_gradient(low = "green", high = "red") +
+  theme_bw()
+}
+
+lapply(names(clearData %>% select(-X, xmonth)), plotSimpleHistogram)
+
+
+
+summary <- summary(clearData)
+```
+
+## Korelacja między zmiennymi
+```{r correlation, CACHE=TRUE}
+
+
+cors2 <- sapply(clearData, cor, y=clearData$length)
+print(cors2)
+
+ggplot(
+  clearData, 
+  aes(x=chel1, y=length)
+) +
+geom_point()+
+  geom_smooth()
+
+
+ggplot(
+  clearData, 
+  aes(x=lcop1, y=length)
+) +
+geom_point()+
+  geom_smooth()
+
+ggplot(
+  clearData, 
+  aes(x=fbar, y=length)
+) +
+geom_point()+
+  geom_smooth()
+
+ggplot(
+  clearData, 
+  aes(x=sst, y=length)
+) +
+geom_point()+
+  geom_smooth()
+
+ggplot(
+  clearData, 
+  aes(x=nao, y=length)
+) +
+geom_point() +
+  geom_smooth()
+
+
+```
+
+## Zmiana rozmiaru śledzia w latach
+```{r animatedChart, fig.show = "animate", CACHE=TRUE}
+periodPerXRows <- clearData %>% mutate(period = X %/% 5000, id= X %% 5000)
+
+
+
+p <-  ggplot(periodPerXRows, aes(id,length, frame = period)) +
+  geom_point() + 
+  geom_smooth(aes(group = period), method = "lm", show.legend = FALSE)
+
+gganimate(p)
+```
+
+
+
