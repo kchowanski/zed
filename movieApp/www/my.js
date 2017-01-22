@@ -1,0 +1,3 @@
+function callMe() {
+	alert('nieee');
+}
